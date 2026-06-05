@@ -254,7 +254,7 @@
             <el-option
               v-for="member in members"
               :key="member.id"
-              :label="`${member.name} - ${member.member_number}`"
+              :label="`${member.name} - ${member.phone} (${member.tech_level})`"
               :value="member.id"
             />
           </el-select>
@@ -306,7 +306,7 @@
             <el-option
               v-for="member in members"
               :key="member.id"
-              :label="`${member.name} - ${member.member_number}`"
+              :label="`${member.name} - ${member.phone} (${member.tech_level})`"
               :value="member.id"
             />
           </el-select>
@@ -399,8 +399,8 @@ const usageStats = computed(() => {
   const totalEquipment = reservations.value.length + availableEquipment.value.length
   const reservedEquipment = reservations.value.length
   const availableEquipmentCount = availableEquipment.value.length
-  const assignedToMember = reservations.value.filter(r => r.assigned_to).length
-  const publicEquipment = reservations.value.filter(r => !r.assigned_to).length
+  const assignedToMember = reservations.value.filter(r => r.assigned_to || r.reserved_for_member_id).length
+  const publicEquipment = reservations.value.filter(r => !r.assigned_to && !r.reserved_for_member_id).length
   const usageRate = totalEquipment > 0 ? Math.round((reservedEquipment / totalEquipment) * 100) : 0
 
   return {
@@ -541,11 +541,22 @@ const handleBatchReserve = async () => {
 const showEditDialog = (row) => {
   editForm.id = row.id
   editForm.equipment_name = row.equipment_name
-  editForm.use_date = row.use_date
-  editForm.start_time = row.start_time
-  editForm.end_time = row.end_time
-  editForm.assign_type = row.assigned_to ? 'member' : 'public'
-  editForm.assigned_to = row.assigned_to
+  if (row.use_date) {
+    editForm.use_date = row.use_date
+    const s = row.start_time || ''
+    const e = row.end_time || ''
+    editForm.start_time = (s.split(' ')[1] || s).substring(0, 5)
+    editForm.end_time = (e.split(' ')[1] || e).substring(0, 5)
+  } else {
+    const s = row.start_time || ''
+    const e = row.end_time || ''
+    editForm.use_date = s.split(' ')[0]
+    editForm.start_time = (s.split(' ')[1] || s).substring(0, 5)
+    editForm.end_time = (e.split(' ')[1] || e).substring(0, 5)
+  }
+  const assignedId = row.assigned_to || row.reserved_for_member_id
+  editForm.assign_type = assignedId ? 'member' : 'public'
+  editForm.assigned_to = assignedId
   editForm.status = row.status
   editDialogVisible.value = true
 }

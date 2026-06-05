@@ -376,64 +376,97 @@ def check_registration_eligibility():
     member_id = data['member_id']
     exam_id = data['exam_id']
     
+    details = []
+    
     member = Member.query.get(member_id)
     if not member:
-        return jsonify({'eligible': False, 'reason': '会员不存在'})
+        details.append({'name': '会员信息', 'passed': False, 'message': '会员不存在'})
+        return jsonify({'eligible': False, 'reason': '会员不存在', 'details': details})
+    details.append({'name': '会员信息', 'passed': True, 'message': f'会员：{member.name}'})
     
     exam = LevelExam.query.get(exam_id)
     if not exam:
-        return jsonify({'eligible': False, 'reason': '考试不存在'})
+        details.append({'name': '考试信息', 'passed': False, 'message': '考试不存在'})
+        return jsonify({'eligible': False, 'reason': '考试不存在', 'details': details})
+    details.append({'name': '考试信息', 'passed': True, 'message': f'考试：{exam.name}'})
     
     if exam.status != '报名中':
-        return jsonify({'eligible': False, 'reason': f'考试当前状态为"{exam.status}"，不接受报名'})
+        details.append({'name': '考试状态', 'passed': False, 'message': f'考试当前状态为"{exam.status}"，不接受报名'})
+    else:
+        details.append({'name': '考试状态', 'passed': True, 'message': '报名中'})
     
     today = date.today().isoformat()
     if today > exam.registration_deadline:
-        return jsonify({'eligible': False, 'reason': '报名已截止'})
+        details.append({'name': '报名截止', 'passed': False, 'message': f'报名已于 {exam.registration_deadline} 截止'})
+    else:
+        details.append({'name': '报名截止', 'passed': True, 'message': f'截止日期：{exam.registration_deadline}'})
     
     registered_count = ExamRegistration.query.filter_by(exam_id=exam_id).count()
     if registered_count >= exam.registration_capacity:
-        return jsonify({'eligible': False, 'reason': '报名人数已满'})
+        details.append({'name': '报名容量', 'passed': False, 'message': f'报名人数已满（{registered_count}/{exam.registration_capacity}）'})
+    else:
+        details.append({'name': '报名容量', 'passed': True, 'message': f'剩余名额 {exam.registration_capacity - registered_count} 个'})
     
     existing = ExamRegistration.query.filter_by(exam_id=exam_id, member_id=member_id).first()
     if existing:
-        return jsonify({'eligible': False, 'reason': '已报名该考试'})
+        details.append({'name': '重复报名', 'passed': False, 'message': '已报名该考试'})
+    else:
+        details.append({'name': '重复报名', 'passed': True, 'message': '未报名'})
     
     member_level, avg_score = calculate_tech_level(member_id)
     levels_order = ['白丁', '初级射手', '中级射手', '高级射手', '精英射手', '大师射手']
     target_idx = levels_order.index(exam.target_level)
     current_idx = levels_order.index(member_level)
     if current_idx >= target_idx:
-        return jsonify({'eligible': False, 'reason': f'当前等级"{member_level}"已达到或超过目标等级"{exam.target_level}"'})
-    if current_idx < target_idx - 1:
-        return jsonify({'eligible': False, 'reason': f'需要先通过{levels_order[target_idx - 1]}等级考试'})
+        details.append({'name': '技术等级', 'passed': False, 'message': f'当前等级"{member_level}"已达到或超过目标等级"{exam.target_level}"'})
+    elif current_idx < target_idx - 1:
+        details.append({'name': '技术等级', 'passed': False, 'message': f'需要先通过"{levels_order[target_idx - 1]}"等级考试，当前等级"{member_level}"'})
+    else:
+        details.append({'name': '技术等级', 'passed': True, 'message': f'当前等级：{member_level}，目标等级：{exam.target_level}'})
     
     recent_scores = Score.query.filter_by(member_id=member_id).order_by(Score.training_date.desc()).limit(5).all()
     if len(recent_scores) < 3:
-        return jsonify({'eligible': False, 'reason': '近期训练成绩不足，需要至少3条训练记录'})
-    
-    recent_avg = sum(s.total_score for s in recent_scores) / len(recent_scores)
-    if recent_avg < exam.pass_score * 0.6:
-        return jsonify({'eligible': False, 'reason': f'近期训练平均成绩{recent_avg:.1f}过低，建议加强训练后再报名'})
+        details.append({'name': '训练成绩', 'passed': False, 'message': f'近期训练成绩不足，仅 {len(recent_scores)} 条，需要至少 3 条训练记录'})
+    else:
+        recent_avg = sum(s.total_score for s in recent_scores) / len(recent_scores)
+        threshold = exam.pass_score * 0.6
+        if recent_avg < threshold:
+            details.append({'name': '训练成绩', 'passed': False, 'message': f'近 5 次平均成绩 {recent_avg:.1f} 环，低于及格分 60%（{threshold:.0f} 环），建议加强训练'})
+        else:
+            details.append({'name': '训练成绩', 'passed': True, 'message': f'近 5 次平均 {recent_avg:.1f} 环，满足要求（及格分 60% 为 {threshold:.0f} 环）'})
     
     unreturned = BorrowRecord.query.filter_by(member_id=member_id, status='借用中').count()
     if unreturned > 0:
-        return jsonify({'eligible': False, 'reason': f'存在{unreturned}件未归还器材，请先归还后再报名'})
+        details.append({'name': '器材归还', 'passed': False, 'message': f'存在 {unreturned} 件未归还器材，请先归还后再报名'})
+    else:
+        details.append({'name': '器材归还', 'passed': True, 'message': '无未归还器材'})
     
+    bow_ok = True
     if exam.bow_type_restriction:
         allowed_bows = [b.strip() for b in exam.bow_type_restriction.split(',')]
         member_bow_scores = Score.query.filter_by(member_id=member_id).with_entities(Score.bow_type).distinct().all()
         member_bows = [b[0] for b in member_bow_scores]
         has_valid_bow = any(b in allowed_bows for b in member_bows)
         if not has_valid_bow and member_bows:
-            return jsonify({'eligible': False, 'reason': f'考试限制弓型为{allowed_bows}，您的训练记录中未包含允许的弓型'})
+            bow_ok = False
+            details.append({'name': '弓型限制', 'passed': False, 'message': f'考试允许弓型：{allowed_bows}，您的训练弓型：{member_bows}'})
+        elif not member_bows:
+            details.append({'name': '弓型限制', 'passed': True, 'message': f'考试允许弓型：{allowed_bows}，暂无训练记录'})
+        else:
+            details.append({'name': '弓型限制', 'passed': True, 'message': f'已使用允许的弓型，考试限制：{allowed_bows}'})
+    else:
+        details.append({'name': '弓型限制', 'passed': True, 'message': '无弓型限制'})
+    
+    all_passed = all(d['passed'] for d in details)
     
     return jsonify({
-        'eligible': True,
-        'member_level': member_level,
-        'avg_score': avg_score,
-        'recent_avg': round(recent_avg, 2),
-        'unreturned_count': unreturned
+        'eligible': all_passed,
+        'reason': '' if all_passed else next((d['message'] for d in details if not d['passed']), '资格校验不通过'),
+        'member_level': member_level if 'member_level' in dir() else '',
+        'avg_score': round(avg_score, 2) if 'avg_score' in dir() else 0,
+        'recent_avg': round(sum(s.total_score for s in recent_scores) / max(len(recent_scores), 1), 2) if len(recent_scores) > 0 else 0,
+        'unreturned_count': unreturned if 'unreturned' in dir() else 0,
+        'details': details
     })
 
 
@@ -768,6 +801,9 @@ def get_exam_equipment_reservations():
         'equipment_status': r.equipment.status if r.equipment else '',
         'reserved_for_member_id': r.reserved_for_member_id,
         'reserved_for_member_name': r.reserved_for.name if r.reserved_for else '公共器材',
+        'assigned_to': r.reserved_for_member_id,
+        'assigned_to_name': r.reserved_for.name if r.reserved_for else '公共器材',
+        'use_date': r.start_time.split(' ')[0] if ' ' in r.start_time else r.start_time,
         'reservation_time': r.reservation_time,
         'start_time': r.start_time,
         'end_time': r.end_time,
@@ -807,9 +843,21 @@ def batch_reserve_equipment():
     data = request.json
     exam_id = data['exam_id']
     equipment_ids = data['equipment_ids']
-    start_time = data['start_time']
-    end_time = data['end_time']
-    member_id = data.get('member_id')
+    
+    use_date = data.get('use_date', '')
+    raw_start = data.get('start_time', '')
+    raw_end = data.get('end_time', '')
+    if use_date and len(raw_start) <= 5 and ':' in raw_start:
+        start_time = f'{use_date} {raw_start}:00'
+        end_time = f'{use_date} {raw_end}:00'
+    elif use_date:
+        start_time = raw_start if ' ' in raw_start else f'{use_date} {raw_start}'
+        end_time = raw_end if ' ' in raw_end else f'{use_date} {raw_end}'
+    else:
+        start_time = raw_start
+        end_time = raw_end
+    
+    member_id = data.get('member_id') or data.get('assigned_to')
     
     exam = LevelExam.query.get(exam_id)
     if not exam:
@@ -865,10 +913,28 @@ def update_exam_equipment_reservation(id):
     if not reservation:
         return jsonify({'message': '预约记录不存在'}), 404
     data = request.json
+    
+    use_date = data.get('use_date', '')
+    raw_start = data.get('start_time', '')
+    raw_end = data.get('end_time', '')
+    if use_date and len(raw_start) <= 5 and ':' in raw_start:
+        reservation.start_time = f'{use_date} {raw_start}:00'
+        reservation.end_time = f'{use_date} {raw_end}:00'
+    elif raw_start and raw_end:
+        if use_date:
+            reservation.start_time = raw_start if ' ' in raw_start else f'{use_date} {raw_start}'
+            reservation.end_time = raw_end if ' ' in raw_end else f'{use_date} {raw_end}'
+        else:
+            reservation.start_time = raw_start
+            reservation.end_time = raw_end
+    
     reservation.status = data.get('status', reservation.status)
     reservation.notes = data.get('notes', reservation.notes)
-    if data.get('reserved_for_member_id'):
-        reservation.reserved_for_member_id = data['reserved_for_member_id']
+    new_member_id = data.get('reserved_for_member_id') or data.get('assigned_to')
+    if new_member_id is not None:
+        reservation.reserved_for_member_id = new_member_id if new_member_id else None
+    elif data.get('assign_type') == 'public':
+        reservation.reserved_for_member_id = None
     db.session.commit()
     return jsonify({'message': '更新成功'})
 
@@ -930,7 +996,7 @@ def get_member_exam_progress(member_id):
         'current_level': current_level,
         'current_level_index': levels_order.index(current_level),
         'total_exams': len(exam_registrations),
-        'passed_exams': len([e for e in exam_registrations if e['is_passed']]),
+        'passed_exams': len([e for e in exam_registrations if e.is_passed]),
         'exam_progress': exam_progress,
         'training_progress': training_progress,
         'all_progress': all_progress

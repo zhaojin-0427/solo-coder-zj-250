@@ -261,9 +261,9 @@
             {{ detailData.is_passed ? '是' : '否' }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="是否晋级" v-if="detailData.is_promoted !== null">
-          <el-tag :type="detailData.is_promoted ? 'success' : 'info'">
-            {{ detailData.is_promoted ? '是' : '否' }}
+        <el-descriptions-item label="是否晋级" v-if="detailData.level_upgraded !== null && detailData.level_upgraded !== undefined">
+          <el-tag :type="detailData.level_upgraded ? 'success' : 'info'">
+            {{ detailData.level_upgraded ? '是' : '否' }}
           </el-tag>
         </el-descriptions-item>
       </el-descriptions>
@@ -361,7 +361,7 @@ const calculateStats = () => {
   stats.value = {
     passed: registrations.value.filter(r => r.is_passed === true).length,
     failed: registrations.value.filter(r => r.is_passed === false).length,
-    promoted: registrations.value.filter(r => r.is_promoted === true).length
+    promoted: registrations.value.filter(r => r.level_upgraded === true).length
   }
 }
 

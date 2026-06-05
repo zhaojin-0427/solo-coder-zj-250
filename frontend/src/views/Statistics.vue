@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <el-row :gutter="20" class="stat-cards">
-      <el-col :span="4.8" v-for="card in overviewCards" :key="card.title">
+      <el-col :span="4" v-for="card in overviewCards" :key="card.title">
         <el-card class="overview-card" shadow="hover">
           <div class="card-content">
             <div class="card-icon" :style="{ background: card.color }">
@@ -290,46 +290,55 @@ const renderProgressChart = () => {
     progressChartInstance = echarts.init(progressChart.value)
   }
   const data = progressData.value
-  const trainingData = data.filter(d => d.type === 'training')
-  const examData = data.filter(d => d.type === 'exam')
+  const allDates = [...new Set(data.map(function (d) { return d.date }))].sort()
+  const trainingData = data.filter(function (d) { return d.type === 'training' })
+  const examData = data.filter(function (d) { return d.type === 'exam' })
   
+  const trainingScores = allDates.map(function (date) {
+    const t = trainingData.find(function (d) { return d.date === date })
+    return t ? t.score : null
+  })
+  const avgScores = allDates.map(function (date) {
+    const t = trainingData.find(function (d) { return d.date === date })
+    return t ? t.avg_score : null
+  })
+  const examScatterData = examData.map(function (d) {
+    const idx = allDates.indexOf(d.date)
+    return {
+      value: [idx, d.score],
+      symbolSize: 15,
+      itemStyle: { color: d.is_passed ? '#67C23A' : '#F56C6C' }
+    }
+  })
+
   const option = {
     tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
     legend: { data: ['训练成绩', '考试成绩', '平均成绩'], top: 0 },
     grid: { left: '3%', right: '4%', bottom: '3%', top: '15%', containLabel: true },
-    xAxis: { 
-      type: 'category', 
-      data: [...new Set(data.map(d => d.date))].sort(),
-      axisLabel: { fontSize: 11 } 
-    },
+    xAxis: { type: 'category', data: allDates, axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', name: '环数' },
     series: [
       {
         name: '训练成绩',
         type: 'line',
-        data: trainingData.map(d => ({ value: d.score, date: d.date })),
+        data: trainingScores,
         smooth: true,
+        connectNulls: true,
         itemStyle: { color: '#409EFF' },
-        areaStyle: { color: 'rgba(64, 158, 255, 0.1)' },
-        encode: { x: 'date', y: 'value' }
+        areaStyle: { color: 'rgba(64, 158, 255, 0.1)' }
       },
       {
         name: '考试成绩',
         type: 'scatter',
-        data: examData.map(d => ({
-          value: [d.date, d.score],
-          symbolSize: 15,
-          itemStyle: {
-            color: d.is_passed ? '#67C23A' : '#F56C6C'
-          }
-        })),
+        data: examScatterData,
         symbol: 'diamond'
       },
       {
         name: '平均成绩',
         type: 'line',
-        data: trainingData.map(d => ({ value: d.avg_score, date: d.date })),
+        data: avgScores,
         smooth: true,
+        connectNulls: true,
         itemStyle: { color: '#E6A23C' },
         lineStyle: { type: 'dashed' }
       }
@@ -338,43 +347,35 @@ const renderProgressChart = () => {
   progressChartInstance.setOption(option)
 }
 
-const renderLevelExamChart = (data) => {
+const renderLevelExamChart = function (data) {
   if (!levelExamChart.value) return
   if (!levelExamChartInstance) {
     levelExamChartInstance = echarts.init(levelExamChart.value)
   }
   const colors = ['#909399', '#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#9c27b0']
+  const memberCountData = data.map(function (d, i) {
+    return { value: d.count, itemStyle: { color: colors[i] } }
+  })
+  const examPassData = data.map(function (d) { return d.exam_pass_count || 0 })
+
   const option = {
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'shadow' }
-    },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     legend: { data: ['会员人数', '考试通过人数'], top: 0 },
     grid: { left: '3%', right: '4%', bottom: '3%', top: '15%', containLabel: true },
-    xAxis: {
-      type: 'category',
-      data: data.map(d => d.level),
-      axisLabel: { fontSize: 12 }
-    },
+    xAxis: { type: 'category', data: data.map(function (d) { return d.level }), axisLabel: { fontSize: 12 } },
     yAxis: { type: 'value', name: '人数' },
     series: [
       {
         name: '会员人数',
         type: 'bar',
-        data: data.map((d, i) => ({
-          value: d.count,
-          itemStyle: { color: colors[i] }
-        )),
+        data: memberCountData,
         barWidth: '30%',
-        label: {
-          show: true,
-          position: 'top'
-        }
+        label: { show: true, position: 'top' }
       },
       {
         name: '考试通过人数',
         type: 'bar',
-        data: data.map(d => d.exam_pass_count || 0),
+        data: examPassData,
         itemStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: '#ff9800' },
