@@ -132,6 +132,12 @@ def get_borrow_records():
 @app.route('/api/borrow-records', methods=['POST'])
 def create_borrow_record():
     data = request.json
+    equipment = Equipment.query.get(data['equipment_id'])
+    if not equipment:
+        return jsonify({'message': '器材不存在'}), 404
+    if equipment.status != '可用':
+        return jsonify({'message': f'器材当前状态为"{equipment.status}"，无法借用'}), 400
+    
     record = BorrowRecord(
         member_id=data['member_id'],
         equipment_id=data['equipment_id'],
@@ -139,9 +145,7 @@ def create_borrow_record():
         expected_return=data['expected_return'],
         status='借用中'
     )
-    equipment = Equipment.query.get(data['equipment_id'])
-    if equipment:
-        equipment.status = '借用中'
+    equipment.status = '借用中'
     db.session.add(record)
     db.session.commit()
     return jsonify({'id': record.id, 'message': '借用成功'})
@@ -205,6 +209,7 @@ def create_score():
     member = Member.query.get(data['member_id'])
     if member:
         member.tech_level = level
+        db.session.commit()
     
     return jsonify({'id': score.id, 'tech_level': level, 'avg_score': avg, 'message': '成绩录入成功'})
 
@@ -214,9 +219,17 @@ def delete_score(id):
     score = Score.query.get(id)
     if not score:
         return jsonify({'message': '成绩不存在'}), 404
+    member_id = score.member_id
     db.session.delete(score)
     db.session.commit()
-    return jsonify({'message': '删除成功'})
+    
+    level, avg = calculate_tech_level(member_id)
+    member = Member.query.get(member_id)
+    if member:
+        member.tech_level = level
+        db.session.commit()
+    
+    return jsonify({'message': '删除成功', 'tech_level': level, 'avg_score': avg})
 
 
 @app.route('/api/level-exams', methods=['GET'])

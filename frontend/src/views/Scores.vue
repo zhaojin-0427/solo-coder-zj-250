@@ -219,10 +219,14 @@ const submitScore = async () => {
 
 const deleteScore = async (id) => {
   try {
+    const scoreItem = scores.value.find(s => s.id === id)
     await ElMessageBox.confirm('确认删除该成绩记录吗？', '提示', { type: 'warning' })
     await delScore(id)
     ElMessage.success('删除成功')
     loadData()
+    if (scoreItem && scoreItem.member_id === scoreForm.value.member_id) {
+      loadMemberProgress()
+    }
   } catch (e) {
     if (e !== 'cancel') ElMessage.error('删除失败')
   }
