@@ -49,7 +49,7 @@
           <template #header>
             <div class="card-header">
               <el-icon :size="18" color="#409EFF"><TrendCharts /></el-icon>
-              <span>成绩进步曲线</span>
+              <span>会员进步曲线(含考试)</span>
               <el-select v-model="selectedMember" placeholder="选择会员" style="margin-left: 15px; width: 150px" @change="loadProgress">
                 <el-option v-for="m in members" :key="m.id" :label="m.name" :value="m.id" />
               </el-select>
@@ -70,27 +70,97 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <el-row :gutter="20" style="margin-top: 20px">
+      <el-col :span="12">
+        <el-card class="chart-card">
+          <template #header>
+            <div class="card-header">
+              <el-icon :size="18" color="#409EFF"><Medal /></el-icon>
+              <span>等级分布(含考试通过统计)</span>
+            </div>
+          </template>
+          <div ref="levelExamChart" style="height: 350px"></div>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card class="chart-card">
+          <template #header>
+            <div class="card-header">
+              <el-icon :size="18" color="#409EFF"><Trophy /></el-icon>
+              <span>会员考试信息</span>
+              <el-select v-model="selectedMemberInfo" placeholder="选择会员" style="margin-left: 15px; width: 150px" @change="loadExamInfo">
+                <el-option v-for="m in members" :key="m.id" :label="m.name" :value="m.id" />
+              </el-select>
+            </div>
+          </template>
+          <div v-if="examInfo" class="exam-info-panel">
+            <el-descriptions :column="2" border>
+              <el-descriptions-item label="会员姓名">{{ examInfo.member_name }}</el-descriptions-item>
+              <el-descriptions-item label="当前等级">
+                <el-tag type="warning">{{ examInfo.current_level }}</el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="参加考试数">{{ examInfo.total_exams }}</el-descriptions-item>
+              <el-descriptions-item label="通过考试数">{{ examInfo.passed_exams }}</el-descriptions-item>
+            </el-descriptions>
+            <div class="exam-progress-list" style="margin-top: 20px">
+              <h4 style="margin-bottom: 10px">考试记录</h4>
+              <el-timeline>
+                <el-timeline-item
+                  v-for="(item, idx) in examInfo.all_progress.filter(p => p.type === 'exam')"
+                  :key="idx"
+                  :timestamp="item.date"
+                  :type="item.is_passed ? 'success' : 'danger'"
+                  :hollow="true"
+                >
+                  <div class="exam-item">
+                    <span class="exam-name">{{ item.exam_name }}</span>
+                    <el-tag :type="item.is_passed ? 'success' : 'danger'" size="small" style="margin-left: 10px">
+                      {{ item.is_passed ? '通过' : '未通过' }}
+                    </el-tag>
+                    <el-tag v-if="item.level_upgraded" type="warning" size="small" style="margin-left: 5px">
+                      晋级:{{ item.target_level }}
+                    </el-tag>
+                    <span class="exam-score">成绩: {{ item.score }}环</span>
+                  </div>
+                </el-timeline-item>
+                <el-timeline-item v-if="examInfo.all_progress.filter(p => p.type === 'exam').length === 0" type="info">
+                  暂无考试记录
+                </el-timeline-item>
+              </el-timeline>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getEquipmentUsage, getLevelDistribution, getMemberProgress, getDistancePopularity, getOverview, getMembers } from '../api'
+import {
+  getEquipmentUsage, getLevelDistribution, getMemberProgress, getDistancePopularity,
+  getOverview, getMembers, getLevelDistributionWithExams, getMemberExamProgress
+} from '../api'
 import * as echarts from 'echarts'
 
 const usageChart = ref(null)
 const levelChart = ref(null)
 const progressChart = ref(null)
 const distanceChart = ref(null)
+const levelExamChart = ref(null)
 const selectedMember = ref('')
+const selectedMemberInfo = ref('')
 const members = ref([])
 const progressData = ref([])
+const examInfo = ref(null)
 
 let usageChartInstance = null
 let levelChartInstance = null
 let progressChartInstance = null
 let distanceChartInstance = null
+let levelExamChartInstance = null
 
 const overview = ref({
   member_count: 0,
@@ -110,12 +180,13 @@ const overviewCards = [
 
 const loadData = async () => {
   try {
-    const [res1, res2, res3, res4, res5] = await Promise.all([
+    const [res1, res2, res3, res4, res5, res6] = await Promise.all([
       getOverview(),
       getEquipmentUsage(),
       getLevelDistribution(),
       getDistancePopularity(),
-      getMembers()
+      getMembers(),
+      getLevelDistributionWithExams()
     ])
     overview.value = res1.data
     overviewCards[0].value = res1.data.member_count
@@ -126,22 +197,35 @@ const loadData = async () => {
     members.value = res5.data
     if (members.value.length > 0) {
       selectedMember.value = members.value[0].id
+      selectedMemberInfo.value = members.value[0].id
     }
     await nextTick()
     renderUsageChart(res2.data)
     renderLevelChart(res3.data)
     renderDistanceChart(res4.data)
+    renderLevelExamChart(res6.data)
     loadProgress()
+    loadExamInfo()
   } catch (e) {
     ElMessage.error('加载统计数据失败')
+  }
+}
+
+const loadExamInfo = async () => {
+  if (!selectedMemberInfo.value) return
+  try {
+    const res = await getMemberExamProgress(selectedMemberInfo.value)
+    examInfo.value = res.data
+  } catch (e) {
+    console.error(e)
   }
 }
 
 const loadProgress = async () => {
   if (!selectedMember.value) return
   try {
-    const res = await getMemberProgress(selectedMember.value)
-    progressData.value = res.data
+    const res = await getMemberExamProgress(selectedMember.value)
+    progressData.value = res.data.all_progress || []
     await nextTick()
     renderProgressChart()
   } catch (e) {
@@ -206,32 +290,103 @@ const renderProgressChart = () => {
     progressChartInstance = echarts.init(progressChart.value)
   }
   const data = progressData.value
+  const trainingData = data.filter(d => d.type === 'training')
+  const examData = data.filter(d => d.type === 'exam')
+  
   const option = {
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['单次成绩', '平均成绩'], top: 0 },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+    legend: { data: ['训练成绩', '考试成绩', '平均成绩'], top: 0 },
     grid: { left: '3%', right: '4%', bottom: '3%', top: '15%', containLabel: true },
-    xAxis: { type: 'category', data: data.map(d => d.date), axisLabel: { fontSize: 11 } },
+    xAxis: { 
+      type: 'category', 
+      data: [...new Set(data.map(d => d.date))].sort(),
+      axisLabel: { fontSize: 11 } 
+    },
     yAxis: { type: 'value', name: '环数' },
     series: [
       {
-        name: '单次成绩',
+        name: '训练成绩',
         type: 'line',
-        data: data.map(d => d.score),
+        data: trainingData.map(d => ({ value: d.score, date: d.date })),
         smooth: true,
         itemStyle: { color: '#409EFF' },
-        areaStyle: { color: 'rgba(64, 158, 255, 0.1)' }
+        areaStyle: { color: 'rgba(64, 158, 255, 0.1)' },
+        encode: { x: 'date', y: 'value' }
+      },
+      {
+        name: '考试成绩',
+        type: 'scatter',
+        data: examData.map(d => ({
+          value: [d.date, d.score],
+          symbolSize: 15,
+          itemStyle: {
+            color: d.is_passed ? '#67C23A' : '#F56C6C'
+          }
+        })),
+        symbol: 'diamond'
       },
       {
         name: '平均成绩',
         type: 'line',
-        data: data.map(d => d.avg_score),
+        data: trainingData.map(d => ({ value: d.avg_score, date: d.date })),
         smooth: true,
-        itemStyle: { color: '#67C23A' },
+        itemStyle: { color: '#E6A23C' },
         lineStyle: { type: 'dashed' }
       }
     ]
   }
   progressChartInstance.setOption(option)
+}
+
+const renderLevelExamChart = (data) => {
+  if (!levelExamChart.value) return
+  if (!levelExamChartInstance) {
+    levelExamChartInstance = echarts.init(levelExamChart.value)
+  }
+  const colors = ['#909399', '#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#9c27b0']
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' }
+    },
+    legend: { data: ['会员人数', '考试通过人数'], top: 0 },
+    grid: { left: '3%', right: '4%', bottom: '3%', top: '15%', containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: data.map(d => d.level),
+      axisLabel: { fontSize: 12 }
+    },
+    yAxis: { type: 'value', name: '人数' },
+    series: [
+      {
+        name: '会员人数',
+        type: 'bar',
+        data: data.map((d, i) => ({
+          value: d.count,
+          itemStyle: { color: colors[i] }
+        )),
+        barWidth: '30%',
+        label: {
+          show: true,
+          position: 'top'
+        }
+      },
+      {
+        name: '考试通过人数',
+        type: 'bar',
+        data: data.map(d => d.exam_pass_count || 0),
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#ff9800' },
+            { offset: 1, color: '#ff5722' }
+          ])
+        },
+        barWidth: '30%',
+        label: { show: true, position: 'top' }
+      }
+    ]
+  }
+  levelExamChartInstance.setOption(option)
 }
 
 const renderDistanceChart = (data) => {
@@ -277,6 +432,7 @@ onMounted(() => {
     levelChartInstance?.resize()
     progressChartInstance?.resize()
     distanceChartInstance?.resize()
+    levelExamChartInstance?.resize()
   })
 })
 </script>
@@ -326,6 +482,24 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-weight: 600;
+}
+.exam-info-panel {
+  min-height: 300px;
+}
+.exam-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.exam-name {
+  font-weight: 500;
+  color: #303133;
+}
+.exam-score {
+  margin-left: auto;
+  color: #409EFF;
   font-weight: 600;
 }
 </style>

@@ -2,7 +2,7 @@
   <el-container class="app-container">
     <el-aside width="220px" class="sidebar">
       <div class="logo">
-        <el-icon :size="32" color="#409EFF"><Target /></el-icon>
+        <el-icon :size="32" color="#409EFF"><Aim /></el-icon>
         <h2>射箭馆管理系统</h2>
       </div>
       <el-menu
@@ -25,10 +25,32 @@
           <el-icon><EditPen /></el-icon>
           <span>成绩录入</span>
         </el-menu-item>
-        <el-menu-item index="/exams">
-          <el-icon><Medal /></el-icon>
-          <span>等级考试</span>
-        </el-menu-item>
+        <el-sub-menu index="exams-group">
+          <template #title>
+            <el-icon><Medal /></el-icon>
+            <span>等级考试管理</span>
+          </template>
+          <el-menu-item index="/exams">
+            <el-icon><SetUp /></el-icon>
+            <span>考试设置</span>
+          </el-menu-item>
+          <el-menu-item index="/exam-registrations">
+            <el-icon><User /></el-icon>
+            <span>报名管理</span>
+          </el-menu-item>
+          <el-menu-item index="/exam-scores">
+            <el-icon><Edit /></el-icon>
+            <span>轮次成绩录入</span>
+          </el-menu-item>
+          <el-menu-item index="/exam-rankings">
+            <el-icon><Trophy /></el-icon>
+            <span>考试排名榜</span>
+          </el-menu-item>
+          <el-menu-item index="/exam-equipment">
+            <el-icon><Tools /></el-icon>
+            <span>器材保障看板</span>
+          </el-menu-item>
+        </el-sub-menu>
         <el-menu-item index="/statistics">
           <el-icon><DataAnalysis /></el-icon>
           <span>数据统计</span>
@@ -62,7 +84,11 @@ const pageTitle = computed(() => {
     '/equipment': '器材台账管理',
     '/borrow': '借用记录管理',
     '/scores': '训练成绩录入',
-    '/exams': '等级考试与证书',
+    '/exams': '考试设置管理',
+    '/exam-registrations': '考试报名管理',
+    '/exam-scores': '轮次成绩录入',
+    '/exam-rankings': '考试排名榜',
+    '/exam-equipment': '器材保障看板',
     '/statistics': '数据统计分析'
   }
   return titles[route.path] || '射箭馆管理系统'

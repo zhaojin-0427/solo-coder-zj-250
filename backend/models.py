@@ -56,8 +56,62 @@ class LevelExam(db.Model):
     exam_location = db.Column(db.String(100), default='')
     pass_score = db.Column(db.Integer, default=100)
     status = db.Column(db.String(20), default='报名中')
+    exam_project = db.Column(db.String(50), default='射箭')
+    distance_group = db.Column(db.String(50), nullable=False)
+    bow_type_restriction = db.Column(db.String(100), default='')
+    registration_capacity = db.Column(db.Integer, default=50)
+    registration_deadline = db.Column(db.String(20), nullable=False)
+    arrows_per_round = db.Column(db.Integer, default=6)
+    total_rounds = db.Column(db.Integer, default=12)
     
+    registrations = db.relationship('ExamRegistration', backref='exam', lazy=True)
+    round_scores = db.relationship('ExamRoundScore', backref='exam', lazy=True)
+    equipment_reservations = db.relationship('ExamEquipmentReservation', backref='exam', lazy=True)
     certificates = db.relationship('Certificate', backref='exam', lazy=True)
+
+
+class ExamRegistration(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    exam_id = db.Column(db.Integer, db.ForeignKey('level_exam.id'), nullable=False)
+    member_id = db.Column(db.Integer, db.ForeignKey('member.id'), nullable=False)
+    registration_time = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(20), default='已报名')
+    total_score = db.Column(db.Integer, default=0)
+    ranking = db.Column(db.Integer)
+    is_passed = db.Column(db.Boolean, default=False)
+    level_upgraded = db.Column(db.Boolean, default=False)
+    notes = db.Column(db.String(200), default='')
+    
+    member = db.relationship('Member', backref='exam_registrations')
+    round_scores = db.relationship('ExamRoundScore', backref='registration', lazy=True)
+
+
+class ExamRoundScore(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    exam_id = db.Column(db.Integer, db.ForeignKey('level_exam.id'), nullable=False)
+    registration_id = db.Column(db.Integer, db.ForeignKey('exam_registration.id'), nullable=False)
+    member_id = db.Column(db.Integer, db.ForeignKey('member.id'), nullable=False)
+    round_number = db.Column(db.Integer, nullable=False)
+    arrow_scores = db.Column(db.String(200), nullable=False)
+    round_total = db.Column(db.Integer, nullable=False)
+    notes = db.Column(db.String(200), default='')
+    recorded_by = db.Column(db.String(50), default='管理员')
+    record_time = db.Column(db.String(20), nullable=False)
+
+
+class ExamEquipmentReservation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    exam_id = db.Column(db.Integer, db.ForeignKey('level_exam.id'), nullable=False)
+    equipment_id = db.Column(db.Integer, db.ForeignKey('equipment.id'), nullable=False)
+    reserved_for_member_id = db.Column(db.Integer, db.ForeignKey('member.id'))
+    reservation_time = db.Column(db.String(20), nullable=False)
+    start_time = db.Column(db.String(20), nullable=False)
+    end_time = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(20), default='已预约')
+    notes = db.Column(db.String(200), default='')
+    
+    equipment = db.relationship('Equipment', backref='exam_reservations')
+    reserved_for = db.relationship('Member', backref='equipment_reservations')
 
 
 class Certificate(db.Model):
